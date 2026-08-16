@@ -70,7 +70,7 @@ def parse_tls_clienthello(payload):
         return None
 
 def run(paths):
-    tcpfp=defaultdict(set); tsvals=defaultdict(list); ports=defaultdict(list)
+    tcpfp=defaultdict(set); conn_ts=defaultdict(list); ports=defaultdict(list)
     connected=set(); ja3=defaultdict(set); sni=defaultdict(set)
     for path in paths:
         d=open(path,"rb").read()
@@ -98,6 +98,7 @@ def run(paths):
             if syn and ack:      # SYN-ACK 来自服务器 => 对应的客户端"连上了"
                 connected.add(dst)
             if syn and not ack:  # 客户端 SYN
+                truncated = len(tcp) < doff   # 快照/nflog 截断 => 选项不完整，指纹不可信
                 opts=tcp[20:doff]; order=[]; mss=ws=None; tsval=None; i=0
                 while i<len(opts):
                     k=opts[i]
@@ -109,9 +110,11 @@ def run(paths):
                     elif k==3: ws=opts[i+2]
                     elif k==8 and ln>=6: tsval=struct.unpack(">I",opts[i+2:i+6])[0]
                     i+=ln if ln>=2 else 1
-                tcpfp[src].add(f"ttl~{ttl}|win={win}|mss={mss}|ws={ws}|opts={','.join(order)}")
                 ports[src].append(dp)
-                if tsval is not None: tsvals[src].append((ts_s+ts_u/1e6, tsval))
+                if not truncated:
+                    tcpfp[src].add(f"ttl~{ttl}|win={win}|mss={mss}|ws={ws}|opts={','.join(order)}")
+                    # 时钟按「连接(源IP+源端口)」分组：同连接内 TSval 才单调，跨连接不可比
+                    if tsval is not None: conn_ts[(src,sp)].append((ts_s+ts_u/1e6, tsval))
             # TLS ClientHello（握手已进行）
             payload=tcp[doff:]
             if payload[:1]==b'\x16':
@@ -122,11 +125,15 @@ def run(paths):
     for ip in sorted(ips):
         print(f"\n=== {ip} ===")
         for fp in tcpfp.get(ip,[]): print(f"  TCP指纹 : {fp}")
-        # 时钟频率
-        tv=sorted(tsvals.get(ip,[]))
-        if len(tv)>=2:
-            (t0,v0),(t1,v1)=tv[0],tv[-1]
-            if t1>t0: print(f"  时钟频率 : {round((v1-v0)/(t1-t0))} Hz  (样本{len(tv)}, 跨{round(t1-t0)}s)")
+        # 时钟频率：每条连接内算一个速率，取中位数（抗跨连接/丢包干扰）
+        rates=[]
+        for (s,sp),samples in conn_ts.items():
+            if s != ip or len(samples) < 2: continue
+            ss=sorted(samples); (t0,v0),(t1,v1)=ss[0],ss[-1]
+            if t1>t0 and v1>=v0: rates.append((v1-v0)/(t1-t0))
+        if rates:
+            rates.sort(); med=rates[len(rates)//2]
+            print(f"  时钟频率 : {round(med)} Hz  (取自{len(rates)}条连接)")
         pl=ports.get(ip,[])
         if pl: print(f"  连的端口 : {sorted(set(pl))}  (共{len(pl)}个SYN)")
         print(f"  连上了吗 : {'是(有SYN-ACK)' if ip in connected else '否(只SYN/被挡)'}")
