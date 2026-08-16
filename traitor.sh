@@ -65,6 +65,8 @@ cmd_install(){
   need_root; install_deps; ensure_ips
   chmod +x "$DIR/capture.sh" "$DIR/traitor.sh"
   write_unit
+  # 全局命令：任意目录敲 traitor <命令>
+  printf '#!/bin/bash\nexec bash %s/traitor.sh "$@"\n' "$DIR" > /usr/local/bin/traitor && chmod +x /usr/local/bin/traitor
   systemctl daemon-reload
   systemctl enable "$SVC" >/dev/null 2>&1
   systemctl restart "$SVC"
@@ -112,7 +114,7 @@ cmd_port(){
 cmd_uninstall(){
   need_root
   systemctl stop "$SVC" 2>/dev/null; systemctl disable "$SVC" 2>/dev/null
-  rm -f /etc/systemd/system/$SVC.service; systemctl daemon-reload
+  rm -f /etc/systemd/system/$SVC.service /usr/local/bin/traitor; systemctl daemon-reload
   c_grn "已卸载服务（pcap 保留在 $OUT，如需删除请自行 rm）"
 }
 
