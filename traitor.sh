@@ -65,8 +65,9 @@ cmd_install(){
   need_root; install_deps; ensure_ips
   chmod +x "$DIR/capture.sh" "$DIR/traitor.sh"
   write_unit
-  # 全局命令：任意目录敲 traitor <命令>
+  # 全局命令：任意目录敲 Traitor / traitor 打开菜单
   printf '#!/bin/bash\nexec bash %s/traitor.sh "$@"\n' "$DIR" > /usr/local/bin/traitor && chmod +x /usr/local/bin/traitor
+  ln -sf /usr/local/bin/traitor /usr/local/bin/Traitor
   systemctl daemon-reload
   systemctl enable "$SVC" >/dev/null 2>&1
   systemctl restart "$SVC"
@@ -114,11 +115,76 @@ cmd_port(){
 cmd_uninstall(){
   need_root
   systemctl stop "$SVC" 2>/dev/null; systemctl disable "$SVC" 2>/dev/null
-  rm -f /etc/systemd/system/$SVC.service /usr/local/bin/traitor; systemctl daemon-reload
+  rm -f /etc/systemd/system/$SVC.service /usr/local/bin/traitor /usr/local/bin/Traitor; systemctl daemon-reload
   c_grn "已卸载服务（pcap 保留在 $OUT，如需删除请自行 rm）"
 }
 
+cmd_files(){
+  local n sz
+  n=$(ls -1 "$OUT"/*.pcap 2>/dev/null | wc -l | tr -d ' ')
+  sz=$(du -sh "$OUT" 2>/dev/null | awk '{print $1}')
+  echo "抓包目录: $OUT"
+  echo "已抓 pcap: ${n:-0} 个,共 ${sz:-0}"
+  echo "----------------------------------------"
+  ls -lht "$OUT"/*.pcap 2>/dev/null | awk '{printf "  %-38s %6s  %s %s %s\n",$9,$5,$6,$7,$8}' | head -25
+  [ "${n:-0}" = 0 ] && echo "  (还没有 pcap，服务跑一阵再看)"
+}
+
+port_menu(){
+  while true; do
+    echo; echo "== 端口管理 =="; cmd_port list
+    echo "  a=添加  d=删除  r=恢复默认  回车=返回"
+    read -rp "选择: " op
+    case "$op" in
+      a) read -rp "要添加的端口(如 36009 / 37000-37010 / udp:443): " s; [ -n "$s" ] && cmd_port add "$s";;
+      d) read -rp "要删除的端口: " s; [ -n "$s" ] && cmd_port del "$s";;
+      r) cmd_port reset;;
+      "" ) return;;
+      *) echo "无效";;
+    esac
+  done
+}
+
+menu(){
+  while true; do
+    clear 2>/dev/null || true
+    local st ipn pn fn
+    if systemctl is-active --quiet "$SVC" 2>/dev/null; then st="\033[32m运行中\033[0m"; else st="\033[31m未运行\033[0m"; fi
+    ipn=$(grep -cvE '^\s*#|^\s*$' "$DIR/ips.txt" 2>/dev/null || echo 0)
+    pn=$(grep -cvE '^\s*#|^\s*$' "$DIR/ports.txt" 2>/dev/null || grep -cvE '^\s*#|^\s*$' "$DIR/ports.default" 2>/dev/null || echo 0)
+    fn=$(ls -1 "$OUT"/*.pcap 2>/dev/null | wc -l | tr -d ' ')
+    echo "========================================"
+    echo "        Traitor 内鬼指纹采集探针"
+    echo "========================================"
+    printf "  服务状态 : %b\n" "$st"
+    echo "  监视IP   : ${ipn}    端口 : ${pn}    已抓文件 : ${fn}"
+    echo "----------------------------------------"
+    echo "  1. 启动服务          2. 停止服务"
+    echo "  3. 重启服务          4. 状态 / 日志"
+    echo "  5. 提取指纹(分析数据) 6. 查看已抓文件"
+    echo "  7. 端口管理          8. 更新(代码+IP)"
+    echo "  9. 卸载              0. 退出"
+    echo "----------------------------------------"
+    read -rp "请选择 [0-9]: " ch
+    case "$ch" in
+      1) cmd_start ;;
+      2) cmd_stop ;;
+      3) cmd_restart ;;
+      4) cmd_status; echo; echo "最近日志:"; journalctl -u "$SVC" -n 15 --no-pager 2>/dev/null ;;
+      5) cmd_extract ;;
+      6) cmd_files ;;
+      7) port_menu; continue ;;
+      8) cmd_update ;;
+      9) read -rp "确认卸载? [y/N]: " y; [ "$y" = y ] && { cmd_uninstall; exit 0; } ;;
+      0|q) exit 0 ;;
+      *) echo "无效选择" ;;
+    esac
+    echo; read -rp "按回车返回菜单..." _
+  done
+}
+
 case "${1:-}" in
+  "")        menu ;;
   install)   cmd_install ;;
   start)     cmd_start ;;
   stop)      cmd_stop ;;
@@ -126,8 +192,11 @@ case "${1:-}" in
   status)    cmd_status ;;
   update)    cmd_update ;;
   extract)   cmd_extract ;;
+  files)     cmd_files ;;
+  menu)      menu ;;
   port)      cmd_port "${2:-}" "${3:-}" ;;
   uninstall) cmd_uninstall ;;
-  *) echo "用法: $0 {install|start|stop|restart|status|update|extract|uninstall}"
-     echo "        port {list|add <spec>|del <spec>|reset}   # 增删监视端口" ;;
+  *) echo "直接敲 Traitor 打开菜单，或用子命令:"
+     echo "  Traitor {install|start|stop|restart|status|update|extract|files|uninstall}"
+     echo "  Traitor port {list|add <spec>|del <spec>|reset}" ;;
 esac
