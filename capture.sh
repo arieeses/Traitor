@@ -4,7 +4,7 @@ set -u
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 IPFILE="${TRAITOR_IPS:-$DIR/ips.txt}"
-OUT="${TRAITOR_OUT:-/var/lib/traitor/pcap}"
+OUT="${TRAITOR_OUT:-$DIR/ips}"
 IFACE="${TRAITOR_IFACE:-$(ip route 2>/dev/null | awk '/default/{print $5; exit}')}"
 IFACE="${IFACE:-eth0}"
 SNAP="${TRAITOR_SNAP:-512}"

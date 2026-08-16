@@ -3,7 +3,7 @@
 set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SVC=traitor
-OUT="${TRAITOR_OUT:-/var/lib/traitor/pcap}"
+OUT="${TRAITOR_OUT:-$DIR/ips}"
 
 c_red(){ printf '\033[31m%s\033[0m\n' "$*"; }
 c_grn(){ printf '\033[32m%s\033[0m\n' "$*"; }

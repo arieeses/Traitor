@@ -62,7 +62,7 @@ cd Traitor
 |---|---|---|
 | `TRAITOR_IPS`   | `./ips.txt` | 监视的源 IP 名单（每行一个，`#` 注释） |
 | `TRAITOR_IFACE` | 自动探测默认路由网卡 | 抓包网卡 |
-| `TRAITOR_OUT`   | `/var/lib/traitor/pcap` | pcap 输出目录 |
+| `TRAITOR_OUT`   | `Traitor 目录下的 ips/` | pcap 输出目录 |
 | `TRAITOR_PORTS` | 节点口 + 443 | BPF 端口过滤 |
 | `TRAITOR_SNAP`  | `512` | 快照字节（够装 ClientHello） |
 
