@@ -1,0 +1,8 @@
+*.pcap
+*.log
+pcap/
+log/
+__pycache__/
+ports.txt
+dist/
+ips.txt

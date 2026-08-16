@@ -1,0 +1,7 @@
+# Traitor 监视端口 —— 每行一个端口或范围
+#   写法: 36007 (TCP单口) / 36001-36008 (TCP范围) / udp:443 (UDP) / tcp:443 (显式TCP)
+#   裸写=TCP。首次运行会复制成本地 ports.txt，用 `traitor.sh port add/del` 增删。
+35001-35008
+36001-36008
+443
+udp:443
