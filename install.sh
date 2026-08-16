@@ -14,7 +14,9 @@ command -v git >/dev/null 2>&1 || {
 
 if [ -d "$DIR/.git" ]; then
   echo "[traitor] 更新已有安装 $DIR"
-  git -C "$DIR" pull --ff-only
+  git -C "$DIR" remote set-url origin "$REPO" 2>/dev/null || true
+  # fetch+reset 兼容历史被重写的情况；仅动跟踪文件，本地 ips.txt/ports.txt(已gitignore)保留
+  git -C "$DIR" fetch --depth 1 origin main && git -C "$DIR" reset --hard origin/main
 else
   echo "[traitor] 拉取到 $DIR"
   git clone --depth 1 "$REPO" "$DIR"
