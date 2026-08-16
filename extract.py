@@ -15,9 +15,11 @@ def l3_offset(linktype, pkt):
         if et == 0x8100 and len(pkt) >= 18: et = struct.unpack(">H", pkt[16:18])[0]; base=18
         else: base=14
         return base if et in (0x0800,0x86dd) else None
-    if linktype == 113: return 16 if len(pkt)>=16 else None   # Linux SLL
+    if linktype == 113: return 16 if len(pkt)>=16 else None   # Linux SLL (-i any 旧)
+    if linktype == 276: return 20 if len(pkt)>=20 else None   # Linux SLL2 (-i any 新)
     if linktype == 101: return 0                              # RAW IP
     if linktype == 12:  return 0
+    if linktype == 0:   return 4 if len(pkt)>=4 else None     # BSD loopback/gif0 (4字节family头)
     if linktype == 239:  # NFLOG: 头4字节 + 一串TLV, IP包在 NFULA_PAYLOAD(type=9)
         i, n = 4, len(pkt)
         while i + 4 <= n:
@@ -69,7 +71,7 @@ def parse_tls_clienthello(payload):
     except Exception:
         return None
 
-def run(paths):
+def run(paths, summary=False):
     tcpfp=defaultdict(set); conn_ts=defaultdict(list); ports=defaultdict(list)
     connected=set(); ja3=defaultdict(set); sni=defaultdict(set)
     for path in paths:
@@ -120,7 +122,29 @@ def run(paths):
             if payload[:1]==b'\x16':
                 r=parse_tls_clienthello(payload)
                 if r: ja3[src].add(r[0]); (sni[src].add(r[1]) if r[1] else None)
-    # 输出
+    # 汇总模式：按指纹聚合，标注消费设备/服务器/内鬼特征
+    if summary:
+        fp2ips=defaultdict(set)
+        for ip,fps in tcpfp.items():
+            for fp in fps: fp2ips[fp].add(ip)
+        def label(fp):
+            d=dict(x.split("=",1) for x in fp.replace("ttl~","ttl=").split("|") if "=" in x)
+            ws=d.get("ws"); win=d.get("win"); ttl=d.get("ts") or d.get("ttl")
+            tags=[]
+            if ws=="10": tags.append("⚠内鬼栈B(ws10)")
+            if win=="29200": tags.append("⚠内鬼栈C(win29200)")
+            if win=="64240" and ws=="7": tags.append("Linux(栈A/通用,含软路由)")
+            if ws=="8": tags.append("Win/安卓")
+            if ws=="6": tags.append("苹果")
+            if "None" in str(ws): tags.append("无ws(截断?)")
+            return " ".join(tags) or "其它"
+        print(f"总IP: {len(set(tcpfp))}   不同TCP指纹: {len(fp2ips)}\n")
+        print(f"{'IP数':>5}  {'判断':<26} 指纹")
+        print("-"*100)
+        for fp,ipset in sorted(fp2ips.items(), key=lambda x:-len(x[1])):
+            print(f"{len(ipset):>5}  {label(fp):<26} {fp}")
+        return
+    # 明细输出
     ips=set(tcpfp)|set(ja3)
     for ip in sorted(ips):
         print(f"\n=== {ip} ===")
@@ -142,5 +166,7 @@ def run(paths):
             if s: print(f"  SNI     : {s}")
 
 if __name__=="__main__":
-    if len(sys.argv)<2: print("用法: python3 extract.py a.pcap [b.pcap ...]"); sys.exit(1)
-    run(sys.argv[1:])
+    args=[a for a in sys.argv[1:] if a!="--summary"]
+    summ="--summary" in sys.argv
+    if not args: print("用法: python3 extract.py [--summary] a.pcap [b.pcap ...]"); sys.exit(1)
+    run(args, summary=summ)
